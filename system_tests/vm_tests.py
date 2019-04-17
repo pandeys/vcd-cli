@@ -13,12 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
+from uuid import uuid1
 from click.testing import CliRunner
 
 from pyvcloud.system_test_framework.base_test import BaseTestCase
 from pyvcloud.system_test_framework.vapp_constants import VAppConstants
 from pyvcloud.system_test_framework.environment import CommonRoles
 from pyvcloud.system_test_framework.environment import Environment
+from pyvcloud.system_test_framework.utils import create_empty_vapp
 from pyvcloud.vcd.vm import VM
 
 from vcd_cli.login import login, logout
@@ -35,9 +38,17 @@ class VmTest(BaseTestCase):
     """
     DEFAULT_ADAPTER_TYPE = 'VMXNET3'
     DEFAULT_IP_MODE = 'POOL'
+    _empty_vapp_name = 'empty_vApp_' + str(uuid1())
+    _empty_vapp_description = 'empty vApp description'
+    _empty_vapp_runtime_lease = 86400  # in seconds
+    _empty_vapp_storage_lease = 86400  # in seconds
+    _empty_vapp_owner_name = None
+    _empty_vapp_href = None
+    _target_vm_name = 'target_vm'
 
     def test_0000_setup(self):
         """Load configuration and create a click runner to invoke CLI."""
+        logger = Environment.get_default_logger()
         VmTest._config = Environment.get_config()
         VmTest._logger = Environment.get_default_logger()
         VmTest._client = Environment.get_client_in_default_org(
@@ -54,6 +65,14 @@ class VmTest(BaseTestCase):
         VmTest._test_vm = VM(
             VmTest._client,
             href=VmTest._test_vapp.get_vm(VAppConstants.vm1_name).get('href'))
+
+        vdc = Environment.get_test_vdc(VmTest._client)
+        logger.debug('Creating empty vApp.')
+        VmTest._empty_vapp_href = \
+            create_empty_vapp(client=VmTest._client,
+                              vdc=vdc,
+                              name=VmTest._empty_vapp_name,
+                              description=VmTest._empty_vapp_description)
 
     def test_0010_info(self):
         """Get info of the VM."""
@@ -79,6 +98,14 @@ class VmTest(BaseTestCase):
         self._logout()
         #logging with org admin user
         self._login()
+
+    def test_0025_copy_to(self):
+        """Copy VM from one vApp to another."""
+        result = VmTest._runner.invoke(
+            vm, args=['copy-to', VAppConstants.name, VAppConstants.vm1_name,
+                      '--target-vapp-name', VmTest._empty_vapp_name,
+                      '--target-vm-name', VmTest._target_vm_name])
+        self.assertEqual(0, result.exit_code)
 
     def test_0030_power_on(self):
         """Power on the VM."""
